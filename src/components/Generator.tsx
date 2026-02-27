@@ -15,10 +15,11 @@ import {
   Loader2,
   Sparkles,
   ArrowRight,
-  Globe
+  Globe,
+  Lock
 } from 'lucide-react';
 import { VisualData, VisualNode, UserSubscription } from '../types';
-import jsPDF from 'jspdf';
+import { jsPDF } from 'jspdf';
 
 interface GeneratorProps {
   data: VisualData;
@@ -95,7 +96,7 @@ export const Generator: React.FC<GeneratorProps> = ({
     setIsDownloading(true);
     try {
       const canvas = document.createElement('canvas');
-      const img = new Image();
+      const img = document.createElement('img');
       img.crossOrigin = "anonymous";
       
       await new Promise((resolve, reject) => {
@@ -129,11 +130,19 @@ export const Generator: React.FC<GeneratorProps> = ({
       }
 
       if (format === 'pdf') {
-        const pdf = new jsPDF({
-          orientation: 'portrait',
-          unit: 'mm',
-          format: 'a4'
-        });
+        let pdf;
+        try {
+          // Robust jsPDF instantiation
+          const jsPDFConstructor = (jsPDF as any).jsPDF || jsPDF;
+          pdf = new jsPDFConstructor({
+            orientation: 'portrait',
+            unit: 'mm',
+            format: 'a4'
+          });
+        } catch (error) {
+          console.error("jsPDF instantiation failed:", error);
+          throw new Error("Failed to initialize PDF generator. Please try another format.");
+        }
 
         const pageWidth = pdf.internal.pageSize.getWidth();
         const pageHeight = pdf.internal.pageSize.getHeight();

@@ -7,11 +7,12 @@ import { PLANS } from '../../services/subscriptionService';
 interface CheckoutFlowProps {
   plan: PlanType;
   cycle: BillingCycle;
+  userEmail: string;
   onSuccess: () => void;
   onCancel: () => void;
 }
 
-export const CheckoutFlow: React.FC<CheckoutFlowProps> = ({ plan, cycle, onSuccess, onCancel }) => {
+export const CheckoutFlow: React.FC<CheckoutFlowProps> = ({ plan, cycle, userEmail, onSuccess, onCancel }) => {
   const [step, setStep] = React.useState<1 | 2>(1);
   const [isProcessing, setIsProcessing] = React.useState(false);
   const planData = PLANS[plan];
@@ -20,10 +21,32 @@ export const CheckoutFlow: React.FC<CheckoutFlowProps> = ({ plan, cycle, onSucce
   const handlePayment = async (e: React.FormEvent) => {
     e.preventDefault();
     setIsProcessing(true);
-    // Simulate API call
-    await new Promise(resolve => setTimeout(resolve, 2000));
-    setIsProcessing(false);
-    onSuccess();
+    
+    try {
+      const response = await fetch('/api/payments/create-session', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ plan, cycle, userEmail })
+      });
+      
+      const data = await response.json();
+      
+      if (data.checkoutUrl) {
+        // In a real app, we would redirect:
+        // window.location.href = data.checkoutUrl;
+        
+        // For this demo, we'll simulate the redirect delay and then succeed
+        await new Promise(resolve => setTimeout(resolve, 1500));
+        onSuccess();
+      } else {
+        throw new Error(data.error || 'Failed to create payment session');
+      }
+    } catch (error) {
+      console.error('Payment error:', error);
+      alert('Payment failed. Please try again.');
+    } finally {
+      setIsProcessing(false);
+    }
   };
 
   return (
@@ -106,6 +129,7 @@ export const CheckoutFlow: React.FC<CheckoutFlowProps> = ({ plan, cycle, onSucce
                     <input 
                       type="email" 
                       required
+                      defaultValue={userEmail}
                       placeholder="you@example.com"
                       className="w-full p-3 bg-zinc-50 border border-zinc-200 rounded-xl outline-none focus:ring-2 focus:ring-emerald-500 transition-all"
                     />
@@ -155,7 +179,7 @@ export const CheckoutFlow: React.FC<CheckoutFlowProps> = ({ plan, cycle, onSucce
                       {isProcessing ? 'Processing...' : `Pay $${price}`}
                     </button>
                     <p className="text-center text-[10px] text-zinc-400 mt-4 flex items-center justify-center gap-1">
-                      <Lock className="w-3 h-3" /> Secure payment powered by Stripe
+                      <Lock className="w-3 h-3" /> Secure payment powered by XentriPAY
                     </p>
                   </div>
                 </form>

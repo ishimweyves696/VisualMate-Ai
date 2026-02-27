@@ -1,7 +1,20 @@
 import { GoogleGenAI, Type } from "@google/genai";
 import { AnalysisResult, Subject, GradeLevel, Language, VisualStyle, AspectRatio, Resolution } from "../types";
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY || "" });
+let aiInstance: any = null;
+
+function getAI() {
+  if (!aiInstance) {
+    const apiKey = process.env.GEMINI_API_KEY || "";
+    try {
+      aiInstance = new GoogleGenAI({ apiKey });
+    } catch (error) {
+      console.error("Error initializing GoogleGenAI:", error);
+      throw error;
+    }
+  }
+  return aiInstance;
+}
 
 export async function analyzeTopic(
   topic: string,
@@ -9,6 +22,7 @@ export async function analyzeTopic(
   gradeLevel: GradeLevel,
   language: Language
 ): Promise<AnalysisResult> {
+  const ai = getAI();
   const response = await ai.models.generateContent({
     model: "gemini-3-flash-preview",
     contents: `Analyze the following topic for an educational visual:
@@ -88,6 +102,7 @@ export async function generateVisualImage(
   aspectRatio: AspectRatio = '16:9',
   resolution: Resolution = '1K'
 ): Promise<string> {
+  const ai = getAI();
   const jsonString = JSON.stringify({
     title: data.title,
     nodes: data.nodes,
