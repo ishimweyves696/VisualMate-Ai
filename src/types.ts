@@ -3,7 +3,6 @@ export type GradeLevel = 'Elementary' | 'Middle School' | 'High School' | 'Unive
 export type Language = 'English' | 'Spanish' | 'French' | 'German' | 'Chinese' | 'Japanese';
 export type VisualStyle = 'Diagram' | 'Illustration' | 'Infographic' | 'Sketch' | '3D Render' | 'Minimalist';
 export type AspectRatio = '1:1' | '3:4' | '4:3' | '9:16' | '16:9';
-export type Resolution = '1K' | '2K' | '4K';
 
 export type NodeType = 'input' | 'process' | 'output' | 'concept' | 'event';
 
@@ -61,6 +60,8 @@ export interface VisualData {
   imageUrl?: string;
   createdAt: number;
   commentary?: string;
+  category?: string;
+  isPublicSample?: boolean;
 }
 
 export interface AnalysisResult {

@@ -1,5 +1,5 @@
 import { GoogleGenAI, Type } from "@google/genai";
-import { AnalysisResult, Subject, GradeLevel, Language, VisualStyle, AspectRatio, Resolution } from "../types";
+import { AnalysisResult, Subject, GradeLevel, Language, VisualStyle, AspectRatio } from "../types";
 
 let aiInstance: any = null;
 
@@ -99,8 +99,7 @@ export async function analyzeTopic(
 export async function generateVisualImage(
   data: AnalysisResult, 
   style: VisualStyle, 
-  aspectRatio: AspectRatio = '16:9',
-  resolution: Resolution = '1K'
+  aspectRatio: AspectRatio = '16:9'
 ): Promise<string> {
   const ai = getAI();
   const jsonString = JSON.stringify({
@@ -113,7 +112,7 @@ export async function generateVisualImage(
   const fullPrompt = `Create a professional educational diagram using the structured JSON below.
 
 Aspect Ratio: ${aspectRatio}
-Resolution: ${resolution}
+Resolution: 1024x1024
 
 Design must:
 - Fit the exact aspect ratio.

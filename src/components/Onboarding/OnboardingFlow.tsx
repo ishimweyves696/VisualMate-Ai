@@ -24,7 +24,7 @@ export const OnboardingFlow: React.FC<OnboardingFlowProps> = ({ onComplete }) =>
     },
     {
       title: "Professional Visuals",
-      description: "Export high-quality visuals for classrooms, presentations, or study guides. Choose your style, aspect ratio, and resolution.",
+      description: "Export high-quality visuals for classrooms, presentations, or study guides. Choose your style and aspect ratio.",
       icon: <Lightbulb className="w-12 h-12 text-amber-500" />,
       color: "bg-amber-50",
     }

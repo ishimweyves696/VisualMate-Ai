@@ -59,7 +59,7 @@ export const UpgradeModal: React.FC<UpgradeModalProps> = ({ isOpen, onClose, onU
                     <div className="w-5 h-5 bg-emerald-50 text-emerald-600 rounded-full flex items-center justify-center shrink-0">
                       <Check className="w-3 h-3" />
                     </div>
-                    High-resolution 4K visuals
+                    Priority generation support
                   </div>
                   <div className="flex items-center gap-3 text-sm font-medium text-zinc-700">
                     <div className="w-5 h-5 bg-emerald-50 text-emerald-600 rounded-full flex items-center justify-center shrink-0">

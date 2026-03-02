@@ -3,17 +3,86 @@ import { createServer as createViteServer } from "vite";
 import path from "path";
 import { fileURLToPath } from "url";
 import dotenv from "dotenv";
+import cookieParser from "cookie-parser";
+import session from "express-session";
 
 dotenv.config();
 
 const __filename = fileURLToPath(import.meta.url);
 const __dirname = path.dirname(__filename);
 
+const SESSION_SECRET = process.env.SESSION_SECRET || "visualmate_session_secret_123";
+
+// Extend express-session types
+declare module 'express-session' {
+  interface SessionData {
+    user: { id: string; email: string };
+  }
+}
+
 async function startServer() {
   const app = express();
   const PORT = 3000;
 
+  app.set('trust proxy', 1); // trust first proxy
   app.use(express.json());
+  app.use(cookieParser());
+  app.use(session({
+    secret: SESSION_SECRET,
+    resave: false,
+    saveUninitialized: false,
+    name: 'visualmate.sid', // Custom session cookie name
+    cookie: {
+      httpOnly: true,
+      secure: true, // Required for sameSite: 'none'
+      sameSite: "none", // Required for AI Studio iframe
+      maxAge: 30 * 60 * 1000 // 30 minutes
+    }
+  }));
+
+  // --- Authentication Implementation ---
+
+  // Mock user for demo purposes
+  const DEMO_USER = {
+    id: "user_123",
+    email: "ishimweyves217@gmail.com",
+    password: "password123" // In a real app, this would be hashed
+  };
+
+  app.post("/api/auth/login", (req, res) => {
+    const { email, password } = req.body;
+
+    if (email === DEMO_USER.email && password === DEMO_USER.password) {
+      req.session.user = { id: DEMO_USER.id, email: DEMO_USER.email };
+      return res.json({ user: req.session.user });
+    }
+
+    res.status(401).json({ error: "Invalid credentials" });
+  });
+
+  app.post("/api/auth/logout", (req, res) => {
+    req.session.destroy((err) => {
+      if (err) {
+        return res.status(500).json({ error: "Could not log out" });
+      }
+      res.clearCookie("visualmate.sid", {
+        httpOnly: true,
+        secure: true,
+        sameSite: "none"
+      });
+      res.json({ success: true });
+    });
+  });
+
+  app.get("/api/auth/me", (req, res) => {
+    if (req.session.user) {
+      res.json({ user: req.session.user });
+    } else {
+      res.status(401).json({ error: "Not authenticated" });
+    }
+  });
+
+  // --- End Authentication Implementation ---
 
   // --- XentriPAY API Placeholder Implementation ---
   

@@ -11,16 +11,21 @@ import { Sidebar } from './components/Sidebar';
 import { Header } from './components/Header';
 import { Dashboard } from './components/Dashboard';
 import { Settings } from './components/Settings';
-import { VisualData, Subject, GradeLevel, Language, VisualStyle, VisualNode, AspectRatio, Resolution, UserSubscription, PlanType, BillingCycle, UserSettings } from './types';
+import { VisualData, Subject, GradeLevel, Language, VisualStyle, VisualNode, AspectRatio, UserSubscription, PlanType, BillingCycle, UserSettings } from './types';
 import { analyzeTopic, generateVisualImage } from './services/geminiService';
 import { getSubscription, saveSubscription, canGenerate, incrementUsage, upgradePlan, PLANS } from './services/subscriptionService';
 import { getSettings, completeOnboarding as markOnboardingComplete } from './services/onboardingService';
 import { trackGeneration, trackUpgradeTrigger, trackSession } from './services/analyticsService';
 import { History, Layout, BookOpen, Clock, Trash2, CreditCard, CheckCircle2, X, Lock, ShieldCheck, Info, ArrowRight, Sparkles, ChevronRight, Zap, Star, Check, AlertCircle, Shield } from 'lucide-react';
 
-type ViewType = 'dashboard' | 'home' | 'generator' | 'history' | 'pricing' | 'checkout' | 'billing' | 'settings';
+import { AuthProvider, useAuth } from './contexts/AuthContext';
+import { LoginPage } from './components/Auth/LoginPage';
+import { AuthModal } from './components/Auth/AuthModal';
 
-export default function App() {
+type ViewType = 'dashboard' | 'home' | 'generator' | 'history' | 'pricing' | 'checkout' | 'billing' | 'settings' | 'login';
+
+function AppContent() {
+  const { user, isAuthenticated, isLoading, logout } = useAuth();
   const [view, setView] = React.useState<ViewType>('dashboard');
   const [currentVisual, setCurrentVisual] = React.useState<VisualData | null>(null);
   const [subscription, setSubscription] = React.useState<UserSubscription>(getSubscription());
@@ -31,12 +36,31 @@ export default function App() {
   const [showSuccess, setShowSuccess] = React.useState(false);
   const [showPrivacy, setShowPrivacy] = React.useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = React.useState(false);
+  const [isMobileMenuOpen, setIsMobileMenuOpen] = React.useState(false);
   const [history, setHistory] = React.useState<VisualData[]>(() => {
     const saved = localStorage.getItem('visualmind_history');
     return saved ? JSON.parse(saved) : [];
   });
   const [isGenerating, setIsGenerating] = React.useState(false);
   const [generationStep, setGenerationStep] = React.useState<string>('');
+  const [prefillData, setPrefillData] = React.useState<{ topic: string; subject: Subject } | null>(null);
+
+  // Auth Modal State
+  const [isAuthModalOpen, setIsAuthModalOpen] = React.useState(false);
+  const [authModalConfig, setAuthModalConfig] = React.useState<{ title: string; description: string; onSuccess?: () => void }>({
+    title: "Create an account to continue",
+    description: "Save your visual and unlock full access to all features."
+  });
+
+  // Guest Usage Tracking
+  const [guestUsage, setGuestUsage] = React.useState<number>(() => {
+    const saved = localStorage.getItem('visualmind_guest_usage');
+    return saved ? parseInt(saved) : 0;
+  });
+
+  React.useEffect(() => {
+    localStorage.setItem('visualmind_guest_usage', guestUsage.toString());
+  }, [guestUsage]);
 
   React.useEffect(() => {
     localStorage.setItem('visualmind_history', JSON.stringify(history));
@@ -46,6 +70,58 @@ export default function App() {
     trackSession();
   }, []);
 
+  React.useEffect(() => {
+    if (view !== 'home' && view !== 'generator') {
+      setPrefillData(null);
+    }
+  }, [view]);
+
+  React.useEffect(() => {
+    if (isAuthenticated && view === 'login') {
+      setView('dashboard');
+    }
+  }, [isAuthenticated, view]);
+
+  React.useEffect(() => {
+    if (!isLoading && !isAuthenticated && (view === 'history' || view === 'billing' || view === 'settings')) {
+      setView('login');
+    }
+  }, [isAuthenticated, isLoading, view]);
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen bg-zinc-50 flex items-center justify-center">
+        <div className="flex flex-col items-center gap-4">
+          <div className="w-12 h-12 border-4 border-emerald-200 border-t-emerald-600 rounded-full animate-spin" />
+          <p className="text-zinc-500 font-medium animate-pulse">Authenticating...</p>
+        </div>
+      </div>
+    );
+  }
+
+  if (!isAuthenticated && view === 'login') {
+    return <LoginPage />;
+  }
+
+  const triggerAuthModal = (config: { title: string; description: string; onSuccess?: () => void }) => {
+    setAuthModalConfig(config);
+    setIsAuthModalOpen(true);
+  };
+
+  const handleLogout = async () => {
+    await logout();
+    setView('login');
+  };
+
+  const handleCreateNew = (sample?: VisualData) => {
+    if (sample) {
+      setPrefillData({ topic: sample.topic, subject: sample.subject });
+    } else {
+      setPrefillData(null);
+    }
+    setView('home');
+  };
+
   const handleGenerate = async (config: { 
     topic: string; 
     subject: Subject; 
@@ -53,19 +129,20 @@ export default function App() {
     language: Language; 
     style: VisualStyle;
     aspectRatio: AspectRatio;
-    resolution: Resolution;
   }) => {
-    // Plan Enforcement: Quota Check
-    if (!canGenerate(subscription)) {
-      setUpgradeReason("You've reached your daily limit on the Free plan.");
-      setIsUpgradeModalOpen(true);
-      trackUpgradeTrigger();
+    // Guest Limit Check
+    if (!isAuthenticated && guestUsage >= 2) {
+      triggerAuthModal({
+        title: "You've reached the free preview limit",
+        description: "Create an account to continue generating professional visuals and save your progress.",
+        onSuccess: () => setView('home')
+      });
       return;
     }
 
-    // Plan Enforcement: Resolution Check
-    if (subscription.plan === 'FREE' && config.resolution !== '1K') {
-      setUpgradeReason("High resolution visuals are only available on Pro plans.");
+    // Plan Enforcement: Quota Check
+    if (isAuthenticated && !canGenerate(subscription)) {
+      setUpgradeReason("You've reached your daily limit on the Free plan.");
       setIsUpgradeModalOpen(true);
       trackUpgradeTrigger();
       return;
@@ -94,17 +171,21 @@ export default function App() {
       
       setGenerationStep('Optimizing clarity...');
       // Step 2: Image Generation
-      const imageUrl = await generateVisualImage(analysis, config.style, config.aspectRatio, config.resolution);
+      const imageUrl = await generateVisualImage(analysis, config.style, config.aspectRatio);
       const updatedVisual = { ...newVisual, imageUrl };
       setCurrentVisual(updatedVisual);
       
       // Update usage & analytics
-      const updatedSub = incrementUsage(subscription);
-      setSubscription({ ...updatedSub });
+      if (isAuthenticated) {
+        const updatedSub = incrementUsage(subscription);
+        setSubscription({ ...updatedSub });
+      } else {
+        setGuestUsage(prev => prev + 1);
+      }
       trackGeneration(config.topic);
 
-      // Only save to history if not on Free plan
-      if (subscription.plan !== 'FREE') {
+      // Only save to history if not on Free plan and authenticated
+      if (isAuthenticated && subscription.plan !== 'FREE') {
         setHistory(prev => [updatedVisual, ...prev]);
       }
     } catch (error) {
@@ -121,7 +202,7 @@ export default function App() {
     setIsGenerating(true);
     setGenerationStep('Reimagining visual structure...');
     try {
-      const imageUrl = await generateVisualImage(currentVisual, currentVisual.style, currentVisual.aspectRatio, currentVisual.resolution);
+      const imageUrl = await generateVisualImage(currentVisual, currentVisual.style, currentVisual.aspectRatio);
       const updatedVisual = { ...currentVisual, imageUrl };
       setCurrentVisual(updatedVisual);
       setHistory(prev => prev.map(h => h.id === updatedVisual.id ? updatedVisual : h));
@@ -154,6 +235,17 @@ export default function App() {
   };
 
   const handleSelectPlan = (plan: PlanType, cycle: BillingCycle) => {
+    if (!isAuthenticated) {
+      triggerAuthModal({
+        title: "Sign up to upgrade",
+        description: "You need an account to subscribe to a paid plan and unlock all features.",
+        onSuccess: () => {
+          setCheckoutConfig({ plan, cycle });
+          setView('checkout');
+        }
+      });
+      return;
+    }
     setCheckoutConfig({ plan, cycle });
     setView('checkout');
     setIsUpgradeModalOpen(false);
@@ -194,22 +286,56 @@ export default function App() {
 
       <Sidebar 
         view={view} 
-        setView={setView} 
+        setView={(v) => { 
+          if (!isAuthenticated && (v === 'history' || v === 'billing' || v === 'settings')) {
+            setView('login');
+            return;
+          }
+          setView(v); 
+          setIsMobileMenuOpen(false); 
+        }} 
         subscription={subscription} 
-        onUpgrade={() => setView('pricing')}
+        onUpgrade={() => { 
+          if (!isAuthenticated) {
+            triggerAuthModal({
+              title: "Sign up to upgrade",
+              description: "Unlock high-quality downloads, unlimited generations, and more.",
+              onSuccess: () => setView('pricing')
+            });
+          } else {
+            setView('pricing'); 
+          }
+          setIsMobileMenuOpen(false); 
+        }}
         isCollapsed={isSidebarCollapsed}
         setIsCollapsed={setIsSidebarCollapsed}
+        isMobileOpen={isMobileMenuOpen}
+        setIsMobileOpen={setIsMobileMenuOpen}
+        isAuthenticated={isAuthenticated}
       />
 
-      <div className={`flex-1 flex flex-col transition-all duration-300 ${isSidebarCollapsed ? 'ml-20' : 'ml-[260px]'}`}>
+      <div className={`flex-1 flex flex-col transition-all duration-300 ${isSidebarCollapsed ? 'lg:ml-20' : 'lg:ml-[260px]'} ml-0`}>
         <Header 
           title={getPageTitle()} 
-          userEmail="ishimweyves217@gmail.com" 
-          onSettings={() => setView('settings')}
+          userEmail={user?.email || ''} 
+          onLogout={handleLogout}
+          onLogin={() => setView('login')}
+          onSettings={() => {
+            if (!isAuthenticated) {
+              triggerAuthModal({
+                title: "Sign in to manage settings",
+                description: "Access your account preferences and billing information."
+              });
+            } else {
+              setView('settings');
+            }
+          }}
+          onMenuClick={() => setIsMobileMenuOpen(true)}
+          isAuthenticated={isAuthenticated}
         />
 
         <main className="flex-1 overflow-y-auto">
-          <div className="max-w-[1440px] mx-auto px-8 py-10">
+          <div className="max-w-[1440px] mx-auto px-4 sm:px-6 lg:px-8 py-6 sm:py-8 lg:py-10">
             <AnimatePresence mode="wait">
               {view === 'dashboard' && (
                 <motion.div
@@ -222,9 +348,12 @@ export default function App() {
                   <Dashboard 
                     history={history}
                     subscription={subscription}
-                    onCreateNew={() => setView('home')}
+                    onCreateNew={() => handleCreateNew()}
                     onViewHistory={() => setView('history')}
                     onOpenVisual={(visual) => { setCurrentVisual(visual); setView('generator'); }}
+                    isAuthenticated={isAuthenticated}
+                    onAuthRequired={(title, description) => triggerAuthModal({ title, description })}
+                    onUpgrade={() => setView('billing')}
                   />
                 </motion.div>
               )}
@@ -242,6 +371,10 @@ export default function App() {
                     isGenerating={isGenerating} 
                     generationStep={generationStep}
                     subscription={subscription}
+                    initialTopic={prefillData?.topic}
+                    initialSubject={prefillData?.subject}
+                    isAuthenticated={isAuthenticated}
+                    onAuthRequired={(title, description) => triggerAuthModal({ title, description })}
                   />
                 </motion.div>
               )}
@@ -263,10 +396,19 @@ export default function App() {
                     generationStep={generationStep}
                     subscription={subscription}
                     onUpgradeRequest={(reason) => {
-                      setUpgradeReason(reason);
-                      setIsUpgradeModalOpen(true);
-                      trackUpgradeTrigger();
+                      if (!isAuthenticated) {
+                        triggerAuthModal({
+                          title: "Sign up to upgrade",
+                          description: reason || "Unlock high-quality downloads and more features."
+                        });
+                      } else {
+                        setUpgradeReason(reason);
+                        setIsUpgradeModalOpen(true);
+                        trackUpgradeTrigger();
+                      }
                     }}
+                    isAuthenticated={isAuthenticated}
+                    onAuthRequired={(title, description) => triggerAuthModal({ title, description })}
                   />
                 </motion.div>
               )}
@@ -370,6 +512,7 @@ export default function App() {
                   <PricingPage 
                     currentPlan={subscription.plan} 
                     onSelectPlan={handleSelectPlan}
+                    isAuthenticated={isAuthenticated}
                   />
                 </motion.div>
               )}
@@ -504,7 +647,23 @@ export default function App() {
         onUpgrade={handleSelectPlan}
         reason={upgradeReason}
       />
+
+      <AuthModal 
+        isOpen={isAuthModalOpen}
+        onClose={() => setIsAuthModalOpen(false)}
+        title={authModalConfig.title}
+        description={authModalConfig.description}
+        onSuccess={authModalConfig.onSuccess}
+      />
     </div>
+  );
+}
+
+export default function App() {
+  return (
+    <AuthProvider>
+      <AppContent />
+    </AuthProvider>
   );
 }
 

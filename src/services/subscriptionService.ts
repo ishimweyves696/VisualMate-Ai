@@ -7,7 +7,7 @@ export const PLANS = {
     name: 'Starter',
     dailyQuota: 5,
     monthlyQuota: 0,
-    features: ['5 visuals per day', 'Watermarked exports', 'Standard resolution', '1 language', 'No history'],
+    features: ['5 visuals per day', 'Watermarked exports', '1 language', 'No history'],
     priceMonthly: 0,
     priceYearly: 0,
   },
@@ -15,7 +15,7 @@ export const PLANS = {
     name: 'Creator',
     dailyQuota: 9999, // Effectively unlimited daily
     monthlyQuota: 200,
-    features: ['200 visuals per month', 'No watermark', 'High resolution', 'PDF export', 'Multi-language', '30-day history', 'Priority generation'],
+    features: ['200 visuals per month', 'No watermark', 'PDF export', 'Multi-language', '30-day history', 'Priority generation'],
     priceMonthly: 15,
     priceYearly: 144,
   },
