@@ -9,10 +9,9 @@ export const LoginPage: React.FC = () => {
   const [loginSuccess, setLoginSuccess] = useState(false);
   const { login, error, isLoading, user } = useAuth();
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
+  const handleGoogleLogin = async () => {
     try {
-      await login(email, password);
+      await login();
       setLoginSuccess(true);
     } catch (err) {
       // Error is handled by context
@@ -44,83 +43,49 @@ export const LoginPage: React.FC = () => {
               animate={{ opacity: 1, scale: 1 }}
               className="mb-8 p-4 bg-emerald-50 border border-emerald-100 rounded-2xl text-emerald-700 text-sm font-medium text-center w-full"
             >
-              Welcome back, {user.email.split('@')[0]}! Redirecting...
+              Welcome back, {user.name}! Redirecting...
             </motion.div>
           )}
         </AnimatePresence>
 
         {/* Login Form */}
         <div className="w-full bg-white rounded-[24px] p-8 shadow-[0_8px_30px_rgb(0,0,0,0.04)] border border-zinc-100">
-          <form onSubmit={handleSubmit} className="flex flex-col">
-            <div className="space-y-6">
-              <div className="space-y-2">
-                <label className="text-sm font-semibold text-zinc-700 ml-1">Email Address</label>
-                <input
-                  type="email"
-                  value={email}
-                  onChange={(e) => setEmail(e.target.value)}
-                  placeholder="Enter your email"
-                  className="w-full px-4 py-3.5 bg-zinc-50 border border-zinc-200 rounded-[14px] outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/10 focus:bg-white transition-all font-medium text-zinc-900 placeholder:text-zinc-400"
-                  required
-                />
-              </div>
+          <div className="flex flex-col items-center space-y-8">
+            <button
+              onClick={handleGoogleLogin}
+              disabled={isLoading || loginSuccess}
+              className="w-full py-4 bg-white border border-zinc-200 text-zinc-700 font-bold rounded-[14px] hover:bg-zinc-50 active:scale-[0.98] transition-all shadow-sm flex items-center justify-center gap-3 disabled:opacity-50 disabled:pointer-events-none"
+            >
+              {isLoading ? (
+                <Loader2 className="w-5 h-5 animate-spin" />
+              ) : (
+                <img src="https://www.gstatic.com/firebasejs/ui/2.0.0/images/auth/google.svg" alt="Google" className="w-5 h-5" referrerPolicy="no-referrer" />
+              )}
+              {isLoading ? 'Connecting...' : 'Continue with Google'}
+            </button>
 
-              <div className="space-y-2">
-                <label className="text-sm font-semibold text-zinc-700 ml-1">Password</label>
-                <input
-                  type="password"
-                  value={password}
-                  onChange={(e) => setPassword(e.target.value)}
-                  placeholder="Enter your password"
-                  className="w-full px-4 py-3.5 bg-zinc-50 border border-zinc-200 rounded-[14px] outline-none focus:border-emerald-500 focus:ring-2 focus:ring-emerald-500/10 focus:bg-white transition-all font-medium text-zinc-900 placeholder:text-zinc-400"
-                  required
-                />
-                <div className="flex justify-end px-1">
-                  <button type="button" className="text-xs font-bold text-emerald-600 hover:text-emerald-700 transition-colors">
-                    Forgot your password?
-                  </button>
-                </div>
-              </div>
+            {/* Error Handling */}
+            <AnimatePresence>
+              {error && (
+                <motion.div
+                  initial={{ opacity: 0, y: -10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0 }}
+                  className="flex items-center gap-2 text-red-500 text-sm font-semibold text-center"
+                >
+                  <AlertCircle className="w-4 h-4 shrink-0" />
+                  {error}
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            <div className="text-center">
+              <p className="text-xs text-zinc-400 font-medium leading-relaxed">
+                By continuing, you agree to VisualMate AI's <br />
+                <button type="button" className="text-zinc-500 font-bold hover:underline">Terms of Service</button> and <button type="button" className="text-zinc-500 font-bold hover:underline">Privacy Policy</button>.
+              </p>
             </div>
-
-            <div className="mt-8 flex flex-col items-center space-y-8">
-              <button
-                type="submit"
-                disabled={isLoading || loginSuccess}
-                className="w-full md:w-[80%] py-4 bg-zinc-900 text-white font-bold rounded-[14px] hover:bg-zinc-800 active:scale-[0.98] transition-all shadow-lg shadow-zinc-200 flex items-center justify-center gap-2 disabled:opacity-50 disabled:pointer-events-none"
-              >
-                {isLoading ? (
-                  <>
-                    <Loader2 className="w-5 h-5 animate-spin" />
-                    Logging In...
-                  </>
-                ) : (
-                  'Log In'
-                )}
-              </button>
-
-              {/* Error Handling */}
-              <AnimatePresence>
-                {error && (
-                  <motion.div
-                    initial={{ opacity: 0, y: -10 }}
-                    animate={{ opacity: 1, y: 0 }}
-                    exit={{ opacity: 0 }}
-                    className="flex items-center gap-2 text-red-500 text-sm font-semibold"
-                  >
-                    <AlertCircle className="w-4 h-4" />
-                    Invalid email or password. Please try again.
-                  </motion.div>
-                )}
-              </AnimatePresence>
-
-              <div className="text-center">
-                <p className="text-sm text-zinc-500 font-medium">
-                  New to VisualMate AI? <button type="button" className="text-emerald-600 font-bold hover:underline">Sign up here.</button>
-                </p>
-              </div>
-            </div>
-          </form>
+          </div>
         </div>
 
         {/* Footer Info */}

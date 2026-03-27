@@ -6,10 +6,12 @@ import { PUBLIC_SAMPLES } from '../constants/samples';
 
 interface SampleGalleryProps {
   onCreateClick: (sample?: VisualData) => void;
+  limit?: number;
 }
 
-export const SampleGallery: React.FC<SampleGalleryProps> = ({ onCreateClick }) => {
+export const SampleGallery: React.FC<SampleGalleryProps> = ({ onCreateClick, limit }) => {
   const [selectedSample, setSelectedSample] = React.useState<VisualData | null>(null);
+  const samples = limit ? PUBLIC_SAMPLES.slice(0, limit) : PUBLIC_SAMPLES;
 
   return (
     <section className="mt-20">
@@ -19,7 +21,7 @@ export const SampleGallery: React.FC<SampleGalleryProps> = ({ onCreateClick }) =
       </div>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-8">
-        {PUBLIC_SAMPLES.map((sample) => (
+        {samples.map((sample) => (
           <motion.div
             key={sample.id}
             whileHover={{ y: -6 }}

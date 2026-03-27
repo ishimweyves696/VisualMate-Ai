@@ -1,15 +1,26 @@
 import React, { createContext, useContext, useState, useEffect } from 'react';
+import { 
+  onAuthStateChanged, 
+  signInWithPopup, 
+  GoogleAuthProvider, 
+  signOut,
+  User as FirebaseUser
+} from 'firebase/auth';
+import { auth, db } from '../firebase';
+import { doc, getDoc, setDoc, serverTimestamp } from 'firebase/firestore';
 
 interface User {
   id: string;
   email: string;
+  name: string;
+  photoURL?: string;
 }
 
 interface AuthContextType {
   user: User | null;
   isAuthenticated: boolean;
   isLoading: boolean;
-  login: (email: string, password: string) => Promise<void>;
+  login: () => Promise<void>;
   logout: () => Promise<void>;
   error: string | null;
 }
@@ -21,46 +32,63 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const [isLoading, setIsLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const checkAuth = async () => {
-    try {
-      const response = await fetch('/api/auth/me');
-      if (response.ok) {
-        const data = await response.json();
-        setUser(data.user);
+  useEffect(() => {
+    const unsubscribe = onAuthStateChanged(auth, async (firebaseUser) => {
+      if (firebaseUser) {
+        // Check if user exists in Firestore, if not create them
+        const userRef = doc(db, 'users', firebaseUser.uid);
+        const userSnap = await getDoc(userRef);
+
+        if (!userSnap.exists()) {
+          await setDoc(userRef, {
+            uid: firebaseUser.uid,
+            email: firebaseUser.email,
+            displayName: firebaseUser.displayName,
+            photoURL: firebaseUser.photoURL,
+            createdAt: Date.now(),
+            subscription: {
+              plan: 'FREE',
+              usedToday: 0,
+              usedThisMonth: 0,
+              lastResetDate: Date.now()
+            },
+            settings: {
+              onboardingCompleted: false,
+              theme: 'light'
+            },
+            analytics: {
+              totalGenerations: 0,
+              mostFrequentTopics: [],
+              upgradeModalTriggers: 0,
+              sessionCount: 0
+            }
+          });
+        }
+
+        setUser({
+          id: firebaseUser.uid,
+          email: firebaseUser.email || '',
+          name: firebaseUser.displayName || 'User',
+          photoURL: firebaseUser.photoURL || undefined
+        });
       } else {
         setUser(null);
       }
-    } catch (err) {
-      console.error('Auth check failed:', err);
-      setUser(null);
-    } finally {
       setIsLoading(false);
-    }
-  };
+    });
 
-  useEffect(() => {
-    checkAuth();
+    return () => unsubscribe();
   }, []);
 
-  const login = async (email: string, password: string) => {
+  const login = async () => {
     setIsLoading(true);
     setError(null);
     try {
-      const response = await fetch('/api/auth/login', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ email, password }),
-      });
-
-      if (response.ok) {
-        const data = await response.json();
-        setUser(data.user);
-      } else {
-        const data = await response.json();
-        throw new Error(data.error || 'Login failed');
-      }
+      const provider = new GoogleAuthProvider();
+      await signInWithPopup(auth, provider);
     } catch (err: any) {
       setError(err.message);
+      console.error('Login failed:', err);
       throw err;
     } finally {
       setIsLoading(false);
@@ -70,7 +98,7 @@ export const AuthProvider: React.FC<{ children: React.ReactNode }> = ({ children
   const logout = async () => {
     setIsLoading(true);
     try {
-      await fetch('/api/auth/logout', { method: 'POST' });
+      await signOut(auth);
       setUser(null);
     } catch (err) {
       console.error('Logout failed:', err);

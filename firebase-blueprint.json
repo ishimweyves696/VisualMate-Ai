@@ -1,0 +1,58 @@
+{
+  "entities": {
+    "User": {
+      "title": "User Profile",
+      "description": "Stores user account information and subscription status.",
+      "type": "object",
+      "properties": {
+        "uid": { "type": "string", "description": "Unique identifier for the user." },
+        "email": { "type": "string", "format": "email", "description": "User's email address." },
+        "displayName": { "type": "string", "description": "User's display name." },
+        "photoURL": { "type": "string", "description": "URL to the user's profile picture." },
+        "subscription": {
+          "type": "object",
+          "properties": {
+            "plan": { "type": "string", "enum": ["FREE", "PRO", "STUDIO"] },
+            "usedToday": { "type": "integer" },
+            "usedThisMonth": { "type": "integer" },
+            "lastResetDate": { "type": "integer" }
+          }
+        },
+        "createdAt": { "type": "integer", "description": "Timestamp when the user account was created." }
+      },
+      "required": ["uid", "email", "createdAt"]
+    },
+    "Visual": {
+      "title": "Generated Visual",
+      "description": "Stores information about an AI-generated educational visual.",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string", "description": "Unique identifier for the visual." },
+        "authorId": { "type": "string", "description": "UID of the user who created the visual." },
+        "topic": { "type": "string" },
+        "subject": { "type": "string" },
+        "gradeLevel": { "type": "string" },
+        "language": { "type": "string" },
+        "style": { "type": "string" },
+        "title": { "type": "string" },
+        "description": { "type": "string" },
+        "nodes": { "type": "array" },
+        "edges": { "type": "array" },
+        "imageUrl": { "type": "string" },
+        "createdAt": { "type": "integer" },
+        "isPublic": { "type": "boolean" }
+      },
+      "required": ["id", "authorId", "topic", "title", "createdAt"]
+    }
+  },
+  "firestore": {
+    "/users/{userId}": {
+      "schema": "User",
+      "description": "User profile documents."
+    },
+    "/visuals/{visualId}": {
+      "schema": "Visual",
+      "description": "Collection of all generated visuals."
+    }
+  }
+}

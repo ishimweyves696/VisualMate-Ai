@@ -1,23 +1,18 @@
 import { UserSettings } from "../types";
 
-const STORAGE_KEY = 'visualmind_settings';
-
-const defaultSettings: UserSettings = {
+export const defaultSettings: UserSettings = {
   onboardingCompleted: false,
   theme: 'light',
 };
 
 export const getSettings = (): UserSettings => {
-  const saved = localStorage.getItem(STORAGE_KEY);
-  return saved ? JSON.parse(saved) : defaultSettings;
+  return defaultSettings;
 };
 
 export const saveSettings = (settings: UserSettings) => {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(settings));
+  // Persistence handled by App.tsx
 };
 
 export const completeOnboarding = () => {
-  const settings = getSettings();
-  settings.onboardingCompleted = true;
-  saveSettings(settings);
+  // Handled by App.tsx state update
 };

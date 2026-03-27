@@ -39,10 +39,10 @@ export const Home: React.FC<HomeProps> = ({ onGenerate, isGenerating, generation
   const isFree = subscription.plan === 'FREE';
 
   const suggestions = [
-    { topic: "The Water Cycle", subject: "Science" as Subject },
-    { topic: "Ancient Roman Government", subject: "History" as Subject },
+    { topic: "Plant Cell Structure", subject: "Biology" as Subject },
     { topic: "Photosynthesis Process", subject: "Biology" as Subject },
-    { topic: "Plate Tectonics", subject: "Geography" as Subject },
+    { topic: "Chloroplast Function", subject: "Biology" as Subject },
+    { topic: "Leaf Cross-section", subject: "Biology" as Subject },
   ];
 
   const handleSubmit = (e: React.FormEvent) => {

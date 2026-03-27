@@ -20,6 +20,7 @@ import {
 } from 'lucide-react';
 import { VisualData, VisualNode, UserSubscription } from '../types';
 import { jsPDF } from 'jspdf';
+import html2canvas from 'html2canvas';
 
 interface GeneratorProps {
   data: VisualData;
@@ -54,7 +55,7 @@ export const Generator: React.FC<GeneratorProps> = ({
   const [selectedNode, setSelectedNode] = React.useState<VisualNode | null>(null);
   const previewRef = React.useRef<HTMLDivElement>(null);
 
-  const isFree = subscription.plan === 'FREE';
+  const isFree = subscription.plan === 'FREE' || !isAuthenticated;
 
   React.useEffect(() => {
     if (notification) {
@@ -102,11 +103,6 @@ export const Generator: React.FC<GeneratorProps> = ({
   const handleDownload = async (format: 'png' | 'jpg' | 'pdf') => {
     if (!data.imageUrl || isDownloading) return;
 
-    if (!isAuthenticated) {
-      onAuthRequired("Sign up to download", "Create a free account to download your visuals in high quality and remove watermarks.");
-      return;
-    }
-
     if (isFree && format === 'pdf') {
       onUpgradeRequest("PDF export is only available on Pro plans.");
       return;
@@ -114,27 +110,40 @@ export const Generator: React.FC<GeneratorProps> = ({
 
     setIsDownloading(true);
     try {
-      const canvas = document.createElement('canvas');
-      const img = document.createElement('img');
-      img.crossOrigin = "anonymous";
-      
-      await new Promise((resolve, reject) => {
-        img.onload = resolve;
-        img.onerror = reject;
-        img.src = data.imageUrl!;
-      });
+      let canvas: HTMLCanvasElement;
 
-      canvas.width = img.width;
-      canvas.height = img.height;
+      // Use html2canvas to capture the composed visual (image + pins)
+      if (previewRef.current) {
+        canvas = await html2canvas(previewRef.current, {
+          useCORS: true,
+          scale: 2, // Higher quality
+          backgroundColor: '#18181b', // zinc-900
+          logging: false,
+        });
+      } else {
+        // Fallback to just the image if ref is missing
+        canvas = document.createElement('canvas');
+        const img = document.createElement('img');
+        img.crossOrigin = "anonymous";
+        
+        await new Promise((resolve, reject) => {
+          img.onload = resolve;
+          img.onerror = reject;
+          img.src = data.imageUrl!;
+        });
+
+        canvas.width = img.width;
+        canvas.height = img.height;
+        const ctx = canvas.getContext('2d');
+        if (!ctx) throw new Error("Could not get canvas context");
+        ctx.drawImage(img, 0, 0);
+      }
+
       const ctx = canvas.getContext('2d');
-      if (!ctx) throw new Error("Could not get canvas context");
-
-      ctx.drawImage(img, 0, 0);
-
-      if (isFree) {
+      if (ctx && isFree) {
         ctx.save();
-        ctx.font = `${Math.floor(canvas.width / 20)}px sans-serif`;
-        ctx.fillStyle = 'rgba(255, 255, 255, 0.3)';
+        ctx.font = `bold ${Math.floor(canvas.width / 25)}px sans-serif`;
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.2)';
         ctx.textAlign = 'center';
         ctx.textBaseline = 'middle';
         ctx.translate(canvas.width / 2, canvas.height / 2);
@@ -142,19 +151,18 @@ export const Generator: React.FC<GeneratorProps> = ({
         ctx.fillText("VisualMate AI - FREE PLAN", 0, 0);
         ctx.restore();
         
-        ctx.font = `${Math.floor(canvas.width / 50)}px sans-serif`;
-        ctx.fillStyle = 'rgba(0, 0, 0, 0.5)';
+        ctx.font = `bold ${Math.floor(canvas.width / 60)}px sans-serif`;
+        ctx.fillStyle = 'rgba(255, 255, 255, 0.4)';
         ctx.textAlign = 'right';
-        ctx.fillText("Made with VisualMate AI", canvas.width - 20, canvas.height - 20);
+        ctx.fillText("Made with VisualMate AI", canvas.width - 40, canvas.height - 40);
       }
 
       if (format === 'pdf') {
         let pdf;
         try {
-          // Robust jsPDF instantiation
           const jsPDFConstructor = (jsPDF as any).jsPDF || jsPDF;
           pdf = new jsPDFConstructor({
-            orientation: 'portrait',
+            orientation: canvas.width > canvas.height ? 'landscape' : 'portrait',
             unit: 'mm',
             format: 'a4'
           });
@@ -165,7 +173,7 @@ export const Generator: React.FC<GeneratorProps> = ({
 
         const pageWidth = pdf.internal.pageSize.getWidth();
         const pageHeight = pdf.internal.pageSize.getHeight();
-        const margin = 15;
+        const margin = 10;
         const maxWidth = pageWidth - (margin * 2);
         
         const ratio = canvas.width / canvas.height;
@@ -183,10 +191,6 @@ export const Generator: React.FC<GeneratorProps> = ({
         const finalImageData = canvas.toDataURL('image/png');
         pdf.addImage(finalImageData, 'PNG', x, y, finalWidth, finalHeight);
         
-        pdf.setFontSize(16);
-        pdf.setTextColor(40, 40, 40);
-        pdf.text(data.title, pageWidth / 2, y - 10, { align: 'center' });
-        
         pdf.save(getFileName('pdf'));
       } else {
         const mimeType = format === 'png' ? 'image/png' : 'image/jpeg';
@@ -200,7 +204,7 @@ export const Generator: React.FC<GeneratorProps> = ({
           link.click();
           document.body.removeChild(link);
           setTimeout(() => URL.revokeObjectURL(url), 100);
-        }, mimeType, 0.9);
+        }, mimeType, 0.95);
       }
 
       setNotification({ message: 'Download started successfully', type: 'success' });

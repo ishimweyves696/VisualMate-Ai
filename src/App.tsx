@@ -11,12 +11,22 @@ import { Sidebar } from './components/Sidebar';
 import { Header } from './components/Header';
 import { Dashboard } from './components/Dashboard';
 import { Settings } from './components/Settings';
-import { VisualData, Subject, GradeLevel, Language, VisualStyle, VisualNode, AspectRatio, UserSubscription, PlanType, BillingCycle, UserSettings } from './types';
+import { VisualData, Subject, GradeLevel, Language, VisualStyle, VisualNode, AspectRatio, UserSubscription, PlanType, BillingCycle, UserSettings, AppAnalytics } from './types';
 import { analyzeTopic, generateVisualImage } from './services/geminiService';
 import { getSubscription, saveSubscription, canGenerate, incrementUsage, upgradePlan, PLANS } from './services/subscriptionService';
 import { getSettings, completeOnboarding as markOnboardingComplete } from './services/onboardingService';
-import { trackGeneration, trackUpgradeTrigger, trackSession } from './services/analyticsService';
-import { History, Layout, BookOpen, Clock, Trash2, CreditCard, CheckCircle2, X, Lock, ShieldCheck, Info, ArrowRight, Sparkles, ChevronRight, Zap, Star, Check, AlertCircle, Shield } from 'lucide-react';
+import { 
+  saveVisual, 
+  deleteVisual, 
+  subscribeToUserVisuals, 
+  getUserData,
+  updateUserSubscription,
+  updateUserSettings,
+  updateUserAnalytics
+} from './services/firestoreService';
+import { uploadImage } from './services/storageService';
+import { downloadVisual } from './services/downloadService';
+import { History, Layout, BookOpen, Clock, Trash2, CreditCard, CheckCircle2, X, Lock, ShieldCheck, Info, ArrowRight, Sparkles, ChevronRight, Zap, Star, Check, AlertCircle, Shield, Download, Loader2 } from 'lucide-react';
 
 import { AuthProvider, useAuth } from './contexts/AuthContext';
 import { LoginPage } from './components/Auth/LoginPage';
@@ -28,6 +38,7 @@ function AppContent() {
   const { user, isAuthenticated, isLoading, logout } = useAuth();
   const [view, setView] = React.useState<ViewType>('dashboard');
   const [currentVisual, setCurrentVisual] = React.useState<VisualData | null>(null);
+  const [downloadingId, setDownloadingId] = React.useState<string | null>(null);
   const [subscription, setSubscription] = React.useState<UserSubscription>(getSubscription());
   const [settings, setSettings] = React.useState<UserSettings>(getSettings());
   const [checkoutConfig, setCheckoutConfig] = React.useState<{ plan: PlanType; cycle: BillingCycle } | null>(null);
@@ -37,9 +48,15 @@ function AppContent() {
   const [showPrivacy, setShowPrivacy] = React.useState(false);
   const [isSidebarCollapsed, setIsSidebarCollapsed] = React.useState(false);
   const [isMobileMenuOpen, setIsMobileMenuOpen] = React.useState(false);
-  const [history, setHistory] = React.useState<VisualData[]>(() => {
-    const saved = localStorage.getItem('visualmind_history');
-    return saved ? JSON.parse(saved) : [];
+  const [history, setHistory] = React.useState<VisualData[]>([]);
+  const [analytics, setAnalytics] = React.useState<AppAnalytics>(() => {
+    const saved = localStorage.getItem('visualmind_analytics');
+    return saved ? JSON.parse(saved) : {
+      totalGenerations: 0,
+      mostFrequentTopics: [],
+      upgradeModalTriggers: 0,
+      sessionCount: 0,
+    };
   });
   const [isGenerating, setIsGenerating] = React.useState(false);
   const [generationStep, setGenerationStep] = React.useState<string>('');
@@ -62,12 +79,65 @@ function AppContent() {
     localStorage.setItem('visualmind_guest_usage', guestUsage.toString());
   }, [guestUsage]);
 
+  // Firebase Sync
   React.useEffect(() => {
-    localStorage.setItem('visualmind_history', JSON.stringify(history));
-  }, [history]);
+    if (isAuthenticated && user) {
+      // Subscribe to visuals
+      const unsubscribeVisuals = subscribeToUserVisuals(user.id, (visuals) => {
+        setHistory(visuals);
+      });
+
+      // Fetch user data (subscription, settings, analytics)
+      const fetchUserDataFull = async () => {
+        const data = await getUserData(user.id);
+        if (data) {
+          if (data.subscription) setSubscription(data.subscription);
+          if (data.settings) setSettings(data.settings);
+          if (data.analytics) setAnalytics(data.analytics);
+        }
+      };
+      fetchUserDataFull();
+
+      return () => {
+        unsubscribeVisuals();
+      };
+    } else {
+      // Load local history for guest if needed, or clear
+      const saved = localStorage.getItem('visualmind_history');
+      setHistory(saved ? JSON.parse(saved) : []);
+    }
+  }, [isAuthenticated, user]);
 
   React.useEffect(() => {
-    trackSession();
+    if (isAuthenticated && user) {
+      updateUserSubscription(user.id, subscription);
+    }
+  }, [subscription, isAuthenticated, user]);
+
+  React.useEffect(() => {
+    if (isAuthenticated && user) {
+      updateUserSettings(user.id, settings);
+    } else {
+      localStorage.setItem('visualmind_settings', JSON.stringify(settings));
+    }
+  }, [settings, isAuthenticated, user]);
+
+  React.useEffect(() => {
+    if (isAuthenticated && user) {
+      updateUserAnalytics(user.id, analytics);
+    } else {
+      localStorage.setItem('visualmind_analytics', JSON.stringify(analytics));
+    }
+  }, [analytics, isAuthenticated, user]);
+
+  React.useEffect(() => {
+    if (!isAuthenticated) {
+      localStorage.setItem('visualmind_history', JSON.stringify(history));
+    }
+  }, [history, isAuthenticated]);
+
+  React.useEffect(() => {
+    setAnalytics(prev => ({ ...prev, sessionCount: prev.sessionCount + 1 }));
   }, []);
 
   React.useEffect(() => {
@@ -144,7 +214,7 @@ function AppContent() {
     if (isAuthenticated && !canGenerate(subscription)) {
       setUpgradeReason("You've reached your daily limit on the Free plan.");
       setIsUpgradeModalOpen(true);
-      trackUpgradeTrigger();
+      setAnalytics(prev => ({ ...prev, upgradeModalTriggers: prev.upgradeModalTriggers + 1 }));
       return;
     }
 
@@ -172,25 +242,66 @@ function AppContent() {
       setGenerationStep('Optimizing clarity...');
       // Step 2: Image Generation
       const imageUrl = await generateVisualImage(analysis, config.style, config.aspectRatio);
-      const updatedVisual = { ...newVisual, imageUrl };
+      
+      let finalImageUrl = imageUrl;
+      if (isAuthenticated && user) {
+        setGenerationStep('Saving to cloud...');
+        finalImageUrl = await uploadImage(imageUrl, `visuals/${newVisual.id}.png`);
+      }
+      
+      const updatedVisual = { ...newVisual, imageUrl: finalImageUrl };
       setCurrentVisual(updatedVisual);
       
       // Update usage & analytics
-      if (isAuthenticated) {
+      if (isAuthenticated && user) {
         const updatedSub = incrementUsage(subscription);
         setSubscription({ ...updatedSub });
+        await updateUserSubscription(user.id, updatedSub);
+        await saveVisual(updatedVisual);
       } else {
         setGuestUsage(prev => prev + 1);
       }
-      trackGeneration(config.topic);
+      
+      // Track generation
+      setAnalytics(prev => {
+        const topics = [...prev.mostFrequentTopics, config.topic];
+        const topicCounts = topics.reduce((acc, t) => {
+          acc[t] = (acc[t] || 0) + 1;
+          return acc;
+        }, {} as Record<string, number>);
+        
+        const mostFrequentTopics = Object.entries(topicCounts)
+          .sort((a, b) => (b[1] as number) - (a[1] as number))
+          .slice(0, 10)
+          .map(([t]) => t);
 
-      // Only save to history if not on Free plan and authenticated
-      if (isAuthenticated && subscription.plan !== 'FREE') {
+        return {
+          ...prev,
+          totalGenerations: prev.totalGenerations + 1,
+          mostFrequentTopics
+        };
+      });
+
+      // Only save to local history if not authenticated
+      if (!isAuthenticated) {
         setHistory(prev => [updatedVisual, ...prev]);
       }
-    } catch (error) {
+    } catch (error: any) {
       console.error("Generation failed:", error);
-      alert("Failed to generate visual. Please try again.");
+      const errorStr = JSON.stringify(error).toLowerCase();
+      const msg = (error.message || "").toLowerCase();
+      
+      let errorMessage = "Failed to generate visual. Please check your topic and try again.";
+      
+      if (msg.includes('rpc failed') || errorStr.includes('rpc failed') || msg.includes('500') || msg.includes('xhr')) {
+        errorMessage = "The AI service is temporarily busy or unavailable. We've tried retrying, but it's still failing. Please wait a moment and try again.";
+      } else if (msg.includes('invalid response format')) {
+        errorMessage = "The AI provided an unexpected response. Please try refining your topic or trying again.";
+      } else if (msg.includes('no image data')) {
+        errorMessage = "The AI analyzed your topic but failed to generate the final image. Please try again.";
+      }
+      
+      alert(errorMessage);
     } finally {
       setIsGenerating(false);
       setGenerationStep('');
@@ -203,33 +314,97 @@ function AppContent() {
     setGenerationStep('Reimagining visual structure...');
     try {
       const imageUrl = await generateVisualImage(currentVisual, currentVisual.style, currentVisual.aspectRatio);
-      const updatedVisual = { ...currentVisual, imageUrl };
+      
+      let finalImageUrl = imageUrl;
+      if (isAuthenticated && user) {
+        setGenerationStep('Updating cloud storage...');
+        finalImageUrl = await uploadImage(imageUrl, `visuals/${currentVisual.id}.png`);
+      }
+      
+      const updatedVisual = { ...currentVisual, imageUrl: finalImageUrl };
       setCurrentVisual(updatedVisual);
-      setHistory(prev => prev.map(h => h.id === updatedVisual.id ? updatedVisual : h));
-    } catch (error) {
+      
+      if (isAuthenticated && user) {
+        await saveVisual(updatedVisual);
+      } else {
+        setHistory(prev => prev.map(h => h.id === updatedVisual.id ? updatedVisual : h));
+      }
+    } catch (error: any) {
       console.error("Regeneration failed:", error);
+      const errorStr = JSON.stringify(error).toLowerCase();
+      const msg = (error.message || "").toLowerCase();
+      
+      let errorMessage = "Failed to regenerate visual. Please try again.";
+      
+      if (msg.includes('rpc failed') || errorStr.includes('rpc failed') || msg.includes('500') || msg.includes('xhr')) {
+        errorMessage = "The AI service is temporarily busy. Please wait a moment and try again.";
+      } else if (msg.includes('no image data')) {
+        errorMessage = "The AI failed to generate the new image. Please try again.";
+      }
+      
+      alert(errorMessage);
     } finally {
       setIsGenerating(false);
       setGenerationStep('');
     }
   };
 
-  const handleUpdateNodes = (nodes: VisualNode[]) => {
+  const handleUpdateNodes = async (nodes: VisualNode[]) => {
     if (!currentVisual) return;
-    const updated = { ...currentVisual, nodes };
-    setCurrentVisual(updated);
-    setHistory(prev => prev.map(h => h.id === updated.id ? updated : h));
+    let updated = { ...currentVisual, nodes };
+    
+    if (isAuthenticated && user) {
+      // If the image is still base64 (e.g. from guest session), upload it now
+      if (updated.imageUrl?.startsWith('data:image')) {
+        try {
+          const cloudUrl = await uploadImage(updated.imageUrl, `visuals/${updated.id}.png`);
+          updated = { ...updated, imageUrl: cloudUrl };
+        } catch (e) {
+          console.error("Failed to migrate image to cloud storage:", e);
+        }
+      }
+      setCurrentVisual(updated);
+      await saveVisual(updated);
+    } else {
+      setCurrentVisual(updated);
+      setHistory(prev => prev.map(h => h.id === updated.id ? updated : h));
+    }
   };
 
-  const deleteFromHistory = (id: string, e: React.MouseEvent) => {
+  const handleQuickDownload = async (e: React.MouseEvent, item: VisualData) => {
     e.stopPropagation();
-    setHistory(prev => prev.filter(h => h.id !== id));
+    if (!item.imageUrl) return;
+    
+    setDownloadingId(item.id);
+    try {
+      const isFree = subscription.plan === 'FREE' || !isAuthenticated;
+      const fileName = `VisualMate_${item.topic.replace(/[^a-z0-9]/gi, '_').toLowerCase()}`;
+      await downloadVisual(item.imageUrl, fileName, 'png', isFree, item.title);
+    } catch (error) {
+      console.error("Quick download failed:", error);
+    } finally {
+      setDownloadingId(null);
+    }
   };
 
-  const handleCheckoutSuccess = () => {
+  const deleteFromHistory = async (id: string, e: React.MouseEvent) => {
+    e.stopPropagation();
+    if (isAuthenticated && user) {
+      await deleteVisual(id);
+    } else {
+      setHistory(prev => prev.filter(h => h.id !== id));
+    }
+  };
+
+  const handleCheckoutSuccess = async () => {
     if (!checkoutConfig) return;
     const updatedSub = upgradePlan(subscription, checkoutConfig.plan, checkoutConfig.cycle);
     setSubscription({ ...updatedSub });
+    
+    if (isAuthenticated && user) {
+      await updateUserSubscription(user.id, updatedSub);
+    }
+    
     setShowSuccess(true);
     setView('dashboard');
   };
@@ -353,7 +528,8 @@ function AppContent() {
                     onOpenVisual={(visual) => { setCurrentVisual(visual); setView('generator'); }}
                     isAuthenticated={isAuthenticated}
                     onAuthRequired={(title, description) => triggerAuthModal({ title, description })}
-                    onUpgrade={() => setView('billing')}
+                    onUpgrade={() => setView(subscription.plan === 'FREE' ? 'pricing' : 'billing')}
+                    user={user}
                   />
                 </motion.div>
               )}
@@ -404,7 +580,7 @@ function AppContent() {
                       } else {
                         setUpgradeReason(reason);
                         setIsUpgradeModalOpen(true);
-                        trackUpgradeTrigger();
+                        setAnalytics(prev => ({ ...prev, upgradeModalTriggers: prev.upgradeModalTriggers + 1 }));
                       }
                     }}
                     isAuthenticated={isAuthenticated}
@@ -424,30 +600,11 @@ function AppContent() {
                   <div className="flex items-center justify-between mb-12">
                     <div>
                       <h2 className="text-3xl font-bold text-zinc-900 mb-2 tracking-tight">Your Library</h2>
-                      <p className="text-zinc-500 font-medium">{subscription.plan === 'FREE' ? '0' : history.length} professional visuals saved locally</p>
+                      <p className="text-zinc-500 font-medium">{history.length} professional visuals saved to your account</p>
                     </div>
                   </div>
 
-                  {subscription.plan === 'FREE' ? (
-                    <div className="text-center py-24 bg-white rounded-[40px] border border-zinc-100 shadow-sm overflow-hidden relative">
-                      <div className="absolute top-0 right-0 p-12 opacity-5">
-                        <History className="w-80 h-80" />
-                      </div>
-                      <div className="relative z-10 max-w-md mx-auto">
-                        <div className="w-20 h-20 bg-zinc-50 text-zinc-300 rounded-3xl flex items-center justify-center mx-auto mb-8">
-                          <Lock className="w-10 h-10" />
-                        </div>
-                        <h3 className="text-3xl font-bold text-zinc-900 mb-4">History is a Pro Feature</h3>
-                        <p className="text-zinc-500 mb-10 leading-relaxed">Upgrade to Pro to save your visuals, access them anytime, and build a personal library of educational content.</p>
-                        <button 
-                          onClick={() => setView('pricing')}
-                          className="w-full py-4 bg-emerald-600 text-white font-bold rounded-2xl hover:bg-emerald-700 transition-all shadow-xl shadow-emerald-100"
-                        >
-                          Unlock History with Pro
-                        </button>
-                      </div>
-                    </div>
-                  ) : history.length === 0 ? (
+                  {history.length === 0 ? (
                     <div className="text-center py-24 bg-white rounded-[40px] border border-dashed border-zinc-200">
                       <Clock className="w-16 h-16 text-zinc-200 mx-auto mb-6" />
                       <h3 className="text-2xl font-bold text-zinc-900 mb-2">No visuals yet</h3>
@@ -473,7 +630,15 @@ function AppContent() {
                             ) : (
                               <div className="w-full h-full flex items-center justify-center text-zinc-300"><BookOpen className="w-12 h-12" /></div>
                             )}
-                            <div className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity">
+                            <div className="absolute top-4 right-4 opacity-0 group-hover:opacity-100 transition-opacity flex gap-2">
+                              <button 
+                                onClick={(e) => handleQuickDownload(e, item)}
+                                disabled={downloadingId === item.id}
+                                className="p-2.5 bg-white/90 backdrop-blur text-emerald-600 rounded-xl shadow-xl hover:bg-emerald-50 transition-colors disabled:opacity-50"
+                                title="Quick Download PNG"
+                              >
+                                {downloadingId === item.id ? <Loader2 className="w-4 h-4 animate-spin" /> : <Download className="w-4 h-4" />}
+                              </button>
                               <button 
                                 onClick={(e) => deleteFromHistory(item.id, e)}
                                 className="p-2.5 bg-white/90 backdrop-blur text-red-600 rounded-xl shadow-xl hover:bg-red-50 transition-colors"

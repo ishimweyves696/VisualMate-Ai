@@ -6,6 +6,7 @@
   "scripts": {
     "dev": "tsx server.ts",
     "build": "vite build",
+    "deploy": "npm run build && firebase deploy",
     "preview": "vite preview",
     "clean": "rm -rf dist",
     "lint": "tsc --noEmit"
@@ -20,6 +21,7 @@
     "dotenv": "^17.2.3",
     "express": "^4.21.2",
     "express-session": "^1.19.0",
+    "firebase": "^12.10.0",
     "html2canvas": "^1.4.1",
     "jsonwebtoken": "^9.0.3",
     "jspdf": "^4.2.0",

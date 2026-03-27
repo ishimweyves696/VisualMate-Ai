@@ -40,15 +40,11 @@ const DEFAULT_SUBSCRIPTION: UserSubscription = {
 };
 
 export function getSubscription(): UserSubscription {
-  const saved = localStorage.getItem(STORAGE_KEY);
-  if (!saved) return DEFAULT_SUBSCRIPTION;
-  
-  const sub: UserSubscription = JSON.parse(saved);
-  return checkAndResetQuota(sub);
+  return checkAndResetQuota(DEFAULT_SUBSCRIPTION);
 }
 
 export function saveSubscription(sub: UserSubscription) {
-  localStorage.setItem(STORAGE_KEY, JSON.stringify(sub));
+  // Persistence handled by Firestore in App.tsx
 }
 
 function checkAndResetQuota(sub: UserSubscription): UserSubscription {

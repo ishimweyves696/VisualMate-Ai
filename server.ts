@@ -16,7 +16,7 @@ const SESSION_SECRET = process.env.SESSION_SECRET || "visualmate_session_secret_
 // Extend express-session types
 declare module 'express-session' {
   interface SessionData {
-    user: { id: string; email: string };
+    user: { id: string; email: string; name: string };
   }
 }
 
@@ -46,6 +46,7 @@ async function startServer() {
   const DEMO_USER = {
     id: "user_123",
     email: "ishimweyves217@gmail.com",
+    name: "Yves",
     password: "password123" // In a real app, this would be hashed
   };
 
@@ -53,7 +54,7 @@ async function startServer() {
     const { email, password } = req.body;
 
     if (email === DEMO_USER.email && password === DEMO_USER.password) {
-      req.session.user = { id: DEMO_USER.id, email: DEMO_USER.email };
+      req.session.user = { id: DEMO_USER.id, email: DEMO_USER.email, name: DEMO_USER.name };
       return res.json({ user: req.session.user });
     }
 

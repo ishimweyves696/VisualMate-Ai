@@ -1,0 +1,65 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    // ===============================================================
+    // Assumed Data Model
+    // ===============================================================
+    //
+    // Collection: users
+    // Fields: uid, email, displayName, photoURL, subscription, settings, analytics, createdAt, role
+    //
+    // Collection: visuals
+    // Fields: id, authorId, topic, subject, gradeLevel, language, style, title, description, nodes, edges, imageUrl, createdAt, isPublic
+    //
+    // ===============================================================
+
+    // Helper Functions
+    function isAuthenticated() {
+      return request.auth != null;
+    }
+
+    function isOwner(userId) {
+      return isAuthenticated() && request.auth.uid == userId;
+    }
+
+    function isAdmin() {
+      return isAuthenticated() &&
+        (exists(/databases/$(database)/documents/users/$(request.auth.uid)) && 
+         (get(/databases/$(database)/documents/users/$(request.auth.uid)).data.role == 'admin' ||
+          (request.auth.token.email == "ishimweyves217@gmail.com" && request.auth.token.email_verified == true)));
+    }
+
+    function isValidUser(data) {
+      return data.keys().hasAll(['uid', 'email', 'createdAt']) &&
+             data.uid is string &&
+             data.email is string &&
+             data.createdAt is int;
+    }
+
+    function isValidVisual(data) {
+      return data.keys().hasAll(['id', 'authorId', 'topic', 'title', 'createdAt']) &&
+             data.id is string &&
+             data.authorId is string &&
+             data.topic is string &&
+             data.title is string &&
+             data.createdAt is int;
+    }
+
+    // Rules
+    match /users/{userId} {
+      allow read: if isOwner(userId) || isAdmin();
+      allow create: if isOwner(userId) && isValidUser(request.resource.data);
+      allow update: if (isOwner(userId) && isValidUser(request.resource.data) && 
+                       (!('role' in resource.data) || request.resource.data.role == resource.data.role)) || isAdmin();
+      allow delete: if isAdmin();
+    }
+
+    match /visuals/{visualId} {
+      allow read: if isAuthenticated() && (resource.data.authorId == request.auth.uid || resource.data.isPublic == true || isAdmin());
+      allow create: if isAuthenticated() && request.resource.data.authorId == request.auth.uid && isValidVisual(request.resource.data);
+      allow update: if isAuthenticated() && resource.data.authorId == request.auth.uid && isValidVisual(request.resource.data) && isAdmin() == false; // Prevent non-admins from escalating
+      allow update: if isAdmin();
+      allow delete: if isAuthenticated() && (resource.data.authorId == request.auth.uid || isAdmin());
+    }
+  }
+}

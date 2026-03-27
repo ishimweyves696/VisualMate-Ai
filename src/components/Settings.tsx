@@ -1,6 +1,7 @@
-import React from 'react';
-import { motion } from 'motion/react';
+import React, { useState } from 'react';
+import { motion, AnimatePresence } from 'motion/react';
 import { useAuth } from '../contexts/AuthContext';
+import { updateUserProfile } from '../services/firestoreService';
 import { 
   User, 
   Bell, 
@@ -10,16 +11,47 @@ import {
   Mail,
   Trash2,
   ChevronRight,
-  Sparkles
+  Sparkles,
+  Check,
+  X,
+  Loader2
 } from 'lucide-react';
 
 export const Settings: React.FC = () => {
   const { user } = useAuth();
+  const [isEditingProfile, setIsEditingProfile] = useState(false);
+  const [newName, setNewName] = useState(user?.name || '');
+  const [isSaving, setIsSaving] = useState(false);
+  const [saveStatus, setSaveStatus] = useState<'idle' | 'success' | 'error'>('idle');
+
+  const handleSaveProfile = async () => {
+    if (!user) return;
+    setIsSaving(true);
+    try {
+      await updateUserProfile(user.id, { name: newName });
+      setSaveStatus('success');
+      setTimeout(() => {
+        setIsEditingProfile(false);
+        setSaveStatus('idle');
+      }, 1500);
+    } catch (error) {
+      setSaveStatus('error');
+      setTimeout(() => setSaveStatus('idle'), 3000);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
   const sections = [
     {
       title: 'Account',
       items: [
-        { icon: User, label: 'Profile Information', description: 'Update your name and personal details' },
+        { 
+          icon: User, 
+          label: 'Profile Information', 
+          description: 'Update your name and personal details',
+          onClick: () => setIsEditingProfile(true)
+        },
         { icon: Mail, label: 'Email Preferences', description: 'Manage how we contact you' },
       ]
     },
@@ -76,6 +108,7 @@ export const Settings: React.FC = () => {
                 return (
                   <button 
                     key={itemIdx}
+                    onClick={item.onClick}
                     className={`w-full flex items-center justify-between p-5 hover:bg-zinc-50 transition-all group ${
                       itemIdx !== section.items.length - 1 ? 'border-b border-zinc-50' : ''
                     }`}
@@ -102,6 +135,65 @@ export const Settings: React.FC = () => {
           </div>
         ))}
       </div>
+
+      <AnimatePresence>
+        {isEditingProfile && (
+          <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-zinc-900/40 backdrop-blur-sm">
+            <motion.div
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="bg-white rounded-[32px] shadow-2xl max-w-md w-full overflow-hidden border border-zinc-100"
+            >
+              <div className="p-8">
+                <div className="flex items-center justify-between mb-8">
+                  <h3 className="text-xl font-bold text-zinc-900">Edit Profile</h3>
+                  <button 
+                    onClick={() => setIsEditingProfile(false)}
+                    className="p-2 hover:bg-zinc-100 rounded-full transition-colors"
+                  >
+                    <X className="w-5 h-5 text-zinc-400" />
+                  </button>
+                </div>
+
+                <div className="space-y-6">
+                  <div className="space-y-2">
+                    <label className="text-sm font-bold text-zinc-700 ml-1">Display Name</label>
+                    <input 
+                      value={newName}
+                      onChange={(e) => setNewName(e.target.value)}
+                      placeholder="Enter your name"
+                      className="w-full px-4 py-3.5 bg-zinc-50 border border-zinc-200 rounded-2xl outline-none focus:ring-2 focus:ring-emerald-500/10 focus:border-emerald-500 transition-all font-medium"
+                    />
+                  </div>
+
+                  <div className="flex gap-4 pt-4">
+                    <button 
+                      onClick={handleSaveProfile}
+                      disabled={isSaving || !newName.trim()}
+                      className="flex-1 py-4 bg-emerald-600 text-white font-bold rounded-2xl hover:bg-emerald-700 transition-all shadow-xl shadow-emerald-100 flex items-center justify-center gap-2 disabled:opacity-50"
+                    >
+                      {isSaving ? (
+                        <Loader2 className="w-5 h-5 animate-spin" />
+                      ) : saveStatus === 'success' ? (
+                        <Check className="w-5 h-5" />
+                      ) : (
+                        'Save Changes'
+                      )}
+                    </button>
+                    <button 
+                      onClick={() => setIsEditingProfile(false)}
+                      className="flex-1 py-4 bg-zinc-100 text-zinc-600 font-bold rounded-2xl hover:bg-zinc-200 transition-all"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                </div>
+              </div>
+            </motion.div>
+          </div>
+        )}
+      </AnimatePresence>
     </div>
   );
 };
